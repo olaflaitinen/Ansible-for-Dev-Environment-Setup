@@ -64,7 +64,7 @@ install_docker: true
 docker_users:
   - "{{ datasience_user }}"
 
-# Development Tools
+# Development Tools (Debian/Ubuntu)
 dev_tools:
   - git
   - vim
@@ -81,6 +81,22 @@ dev_tools:
   - gnupg
   - lsb-release
 
+# Development Tools (RHEL/CentOS)
+dev_tools_rhel:
+  - git
+  - vim
+  - tmux
+  - htop
+  - tree
+  - curl
+  - wget
+  - unzip
+  - gcc
+  - gcc-c++
+  - make
+  - ca-certificates
+  - gnupg2
+
 # Database Tools
 install_postgres_client: true
 install_mysql_client: true
@@ -93,3 +109,92 @@ install_azure_cli: false
 # VSCode Server
 install_code_server: false
 code_server_port: 8080
+
+# ========================================
+# Advanced Features Configuration
+# ========================================
+
+# JupyterHub Configuration
+install_jupyterhub: false
+jupyterhub_port: 8000
+jupyterhub_hub_port: 8081
+jupyterhub_admin_users:
+  - admin
+jupyterhub_users: []
+install_jupyterhub_extensions: true
+install_nginx_proxy: false
+nodejs_version: "18"
+
+# R and RStudio Server Configuration
+install_r: false
+install_rstudio: true
+rstudio_port: 8787
+rstudio_server_url_deb: "https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2023.12.1-402-amd64.deb"
+rstudio_server_url_rpm: "https://download2.rstudio.org/server/rhel9/x86_64/rstudio-server-rhel-2023.12.1-402-x86_64.rpm"
+r_packages:
+  - tidyverse
+  - ggplot2
+  - dplyr
+  - shiny
+  - rmarkdown
+  - caret
+  - randomForest
+  - xgboost
+  - data.table
+  - plotly
+  - devtools
+
+# GPU Support Configuration
+install_gpu_support: false
+install_nvidia_driver: true
+install_cuda: true
+install_cudnn: false
+install_tensorflow_gpu: true
+install_pytorch_gpu: true
+nvidia_driver_version: "535"
+cuda_version: "12.3"
+cuda_repo_ubuntu: "ubuntu2204/x86_64"
+cuda_repo_rhel: "rhel8/x86_64"
+# cudnn_archive_path: "/path/to/cudnn-linux-x86_64-8.x.x.x_cudaX.Y-archive.tar.xz"
+
+# Kubernetes Tools Configuration
+install_k8s_tools: false
+k8s_version: "1.28"
+install_k9s: true
+install_kubectx: true
+install_krew: true
+
+# Monitoring Configuration
+install_monitoring: false
+install_node_exporter: true
+install_grafana: true
+prometheus_port: 9090
+grafana_port: 3000
+
+# Backup Configuration
+install_backup: false
+backup_method: "local"  # Options: local, borg, rclone
+backup_base_dir: "/backups"
+backup_retention_count: 7
+enable_backup_cron: false
+backup_cron_hour: "2"
+backup_cron_minute: "0"
+backup_cron_day: "*"
+backup_cron_month: "*"
+backup_cron_weekday: "*"
+
+# Borg Backup Settings
+borg_repo: "/backups/borg-repo"
+borg_passphrase: "changeme"
+borg_encryption: "repokey"
+borg_compression: "lz4"
+borg_keep_daily: 7
+borg_keep_weekly: 4
+borg_keep_monthly: 6
+
+# Rclone Backup Settings
+rclone_remote: "remote"
+rclone_remote_path: "datasience-backups"
+rclone_transfers: 4
+rclone_checkers: 8
+rclone_delete_excluded: false

@@ -1,0 +1,209 @@
+---
+# JupyterHub installation for multi-user environments
+
+- name: Install Node.js (required for configurable-http-proxy)
+  block:
+    - name: Install Node.js (Debian/Ubuntu)
+      block:
+        - name: Add NodeSource repository
+          shell: curl -fsSL https://deb.nodesource.com/setup_{{ nodejs_version | default('18') }}.x | bash -
+          args:
+            creates: /etc/apt/sources.list.d/nodesource.list
+
+        - name: Install Node.js
+          apt:
+            name: nodejs
+            state: present
+            update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install Node.js (RHEL/CentOS)
+      block:
+        - name: Add NodeSource repository
+          shell: curl -fsSL https://rpm.nodesource.com/setup_{{ nodejs_version | default('18') }}.x | bash -
+          args:
+            creates: /etc/yum.repos.d/nodesource-el{{ ansible_distribution_major_version }}.repo
+
+        - name: Install Node.js
+          yum:
+            name: nodejs
+            state: present
+      when: ansible_os_family == "RedHat"
+
+- name: Install configurable-http-proxy
+  npm:
+    name: configurable-http-proxy
+    global: yes
+    state: present
+
+- name: Install JupyterHub system dependencies (Debian/Ubuntu)
+  apt:
+    name:
+      - python3-dev
+      - python3-pip
+      - python3-venv
+      - libssl-dev
+      - libcurl4-openssl-dev
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install JupyterHub system dependencies (RHEL/CentOS)
+  yum:
+    name:
+      - python3-devel
+      - python3-pip
+      - openssl-devel
+      - libcurl-devel
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install JupyterHub and dependencies
+  pip:
+    name:
+      - jupyterhub
+      - notebook
+      - jupyterlab
+      - ipywidgets
+      - jupyterhub-systemdspawner
+      - oauthenticator
+    state: present
+    executable: pip3
+
+- name: Create JupyterHub directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /etc/jupyterhub
+    - /var/log/jupyterhub
+    - /srv/jupyterhub
+
+- name: Generate JupyterHub configuration
+  shell: jupyterhub --generate-config
+  args:
+    chdir: /etc/jupyterhub
+    creates: /etc/jupyterhub/jupyterhub_config.py
+
+- name: Configure JupyterHub
+  template:
+    src: jupyterhub_config.py.j2
+    dest: /etc/jupyterhub/jupyterhub_config.py
+    mode: '0644'
+  notify: Restart JupyterHub
+
+- name: Create JupyterHub systemd service
+  template:
+    src: jupyterhub.service.j2
+    dest: /etc/systemd/system/jupyterhub.service
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart JupyterHub
+
+- name: Create jupyterhub user
+  user:
+    name: jupyterhub
+    system: yes
+    shell: /bin/false
+    home: /srv/jupyterhub
+    create_home: yes
+
+- name: Set permissions on JupyterHub directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: jupyterhub
+    group: jupyterhub
+    recurse: yes
+  loop:
+    - /etc/jupyterhub
+    - /var/log/jupyterhub
+    - /srv/jupyterhub
+
+- name: Install JupyterHub extensions
+  pip:
+    name:
+      - jupyterhub-nativeauthenticator
+      - jupyterhub-ldapauthenticator
+      - dockerspawner
+    state: present
+    executable: pip3
+  when: install_jupyterhub_extensions | default(true)
+
+- name: Create example users for JupyterHub
+  user:
+    name: "{{ item }}"
+    groups: jupyterhub-users
+    create_home: yes
+    shell: /bin/bash
+  loop: "{{ jupyterhub_users | default([]) }}"
+  when: jupyterhub_users is defined
+
+- name: Create jupyterhub-users group
+  group:
+    name: jupyterhub-users
+    state: present
+
+- name: Start and enable JupyterHub
+  systemd:
+    name: jupyterhub
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Configure Nginx reverse proxy for JupyterHub
+  block:
+    - name: Install Nginx (Debian/Ubuntu)
+      apt:
+        name: nginx
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Nginx (RHEL/CentOS)
+      yum:
+        name: nginx
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Configure Nginx for JupyterHub
+      template:
+        src: nginx-jupyterhub.conf.j2
+        dest: /etc/nginx/sites-available/jupyterhub.conf
+        mode: '0644'
+      when: ansible_os_family == "Debian"
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/jupyterhub.conf
+        dest: /etc/nginx/sites-enabled/jupyterhub.conf
+        state: link
+      when: ansible_os_family == "Debian"
+      notify: Restart Nginx
+
+    - name: Configure Nginx for JupyterHub (RHEL/CentOS)
+      template:
+        src: nginx-jupyterhub.conf.j2
+        dest: /etc/nginx/conf.d/jupyterhub.conf
+        mode: '0644'
+      when: ansible_os_family == "RedHat"
+      notify: Restart Nginx
+
+    - name: Start and enable Nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+  when: install_nginx_proxy | default(false)
+
+- name: Display JupyterHub installation summary
+  debug:
+    msg:
+      - "JupyterHub installed successfully!"
+      - "Access JupyterHub at: http://{{ ansible_default_ipv4.address }}:{{ jupyterhub_port | default(8000) }}"
+      - "{% if install_nginx_proxy | default(false) %}Nginx reverse proxy: http://{{ ansible_default_ipv4.address }}{% endif %}"
+      - ""
+      - "Create users with: sudo useradd -m -s /bin/bash -G jupyterhub-users username"
+      - "Set password with: sudo passwd username"
+      - ""
+      - "Configuration: /etc/jupyterhub/jupyterhub_config.py"

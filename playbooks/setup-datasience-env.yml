@@ -16,19 +16,26 @@
   gather_facts: yes
 
   pre_tasks:
-    - name: Update apt cache
+    - name: Update apt cache (Debian/Ubuntu)
       apt:
         update_cache: yes
         cache_valid_time: 3600
       when: ansible_os_family == "Debian"
       tags: always
 
-    - name: Ensure system is up to date
+    - name: Ensure system is up to date (Debian/Ubuntu)
       apt:
         upgrade: dist
         autoremove: yes
         autoclean: yes
       when: ansible_os_family == "Debian"
+      tags: system
+
+    - name: Ensure system is up to date (RHEL/CentOS)
+      yum:
+        name: '*'
+        state: latest
+      when: ansible_os_family == "RedHat"
       tags: system
 
   roles:
@@ -43,7 +50,32 @@
       tags: ['docker', 'containers']
 
     - role: jupyter
+      when: not install_jupyterhub | default(false)
       tags: ['jupyter', 'notebook']
+
+    - role: jupyterhub
+      when: install_jupyterhub | default(false)
+      tags: ['jupyterhub', 'multi-user']
+
+    - role: r-rstudio
+      when: install_r | default(false)
+      tags: ['r', 'rstudio']
+
+    - role: gpu-support
+      when: install_gpu_support | default(false)
+      tags: ['gpu', 'cuda', 'nvidia']
+
+    - role: kubernetes-tools
+      when: install_k8s_tools | default(false)
+      tags: ['kubernetes', 'k8s', 'kubectl']
+
+    - role: monitoring
+      when: install_monitoring | default(false)
+      tags: ['monitoring', 'prometheus', 'grafana']
+
+    - role: backup
+      when: install_backup | default(false)
+      tags: ['backup']
 
     - role: dev-tools
       tags: ['dev-tools', 'tools']
@@ -55,15 +87,20 @@
           - "=============================================="
           - "Data Science Environment Setup Complete!"
           - "=============================================="
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
           - "Python version: {{ python_version }}"
-          - "Conda installed: {{ install_conda }}"
-          - "Docker installed: {{ install_docker }}"
-          - "Jupyter Lab accessible at: http://{{ ansible_default_ipv4.address }}:{{ jupyter_port }}"
+          - "Conda installed: {{ install_conda | default(true) }}"
+          - "Docker installed: {{ install_docker | default(true) }}"
+          - "{% if not install_jupyterhub | default(false) %}Jupyter Lab: http://{{ ansible_default_ipv4.address }}:{{ jupyter_port }}{% endif %}"
+          - "{% if install_jupyterhub | default(false) %}JupyterHub: http://{{ ansible_default_ipv4.address }}:{{ jupyterhub_port | default(8000) }}{% endif %}"
+          - "{% if install_r | default(false) %}RStudio Server: http://{{ ansible_default_ipv4.address }}:{{ rstudio_port | default(8787) }}{% endif %}"
+          - "{% if install_monitoring | default(false) %}Prometheus: http://{{ ansible_default_ipv4.address }}:{{ prometheus_port | default(9090) }}{% endif %}"
+          - "{% if install_monitoring | default(false) %}Grafana: http://{{ ansible_default_ipv4.address }}:{{ grafana_port | default(3000) }}{% endif %}"
           - ""
-          - "To start Jupyter Lab:"
-          - "  jupyter lab --ip=0.0.0.0 --port={{ jupyter_port }} --no-browser"
-          - ""
-          - "To activate conda environment:"
-          - "  conda activate {{ conda_env_name }}"
+          - "Quick Start Commands:"
+          - "{% if not install_jupyterhub | default(false) %}  Start Jupyter Lab: jupyter lab --ip=0.0.0.0 --port={{ jupyter_port }} --no-browser{% endif %}"
+          - "  Activate conda: conda activate {{ conda_env_name }}"
+          - "{% if install_gpu_support | default(false) %}  Verify GPU: ~/verify_gpu.py{% endif %}"
+          - "{% if install_backup | default(false) %}  Run backup: sudo datasience-backup{% endif %}"
           - "=============================================="
       tags: always

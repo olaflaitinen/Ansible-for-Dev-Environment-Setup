@@ -1,7 +1,7 @@
 ---
 # Development tools and utilities
 
-- name: Install database clients
+- name: Install database clients (Debian/Ubuntu)
   block:
     - name: Install PostgreSQL client
       apt:
@@ -19,6 +19,25 @@
         state: present
       when: install_mysql_client | default(true)
   when: ansible_os_family == "Debian"
+
+- name: Install database clients (RHEL/CentOS)
+  block:
+    - name: Install PostgreSQL client
+      yum:
+        name:
+          - postgresql
+          - postgresql-devel
+        state: present
+      when: install_postgres_client | default(true)
+
+    - name: Install MySQL client
+      yum:
+        name:
+          - mysql
+          - mysql-devel
+        state: present
+      when: install_mysql_client | default(true)
+  when: ansible_os_family == "RedHat"
 
 - name: Install AWS CLI
   block:

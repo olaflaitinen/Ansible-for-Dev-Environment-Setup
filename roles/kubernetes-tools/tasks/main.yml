@@ -1,0 +1,178 @@
+---
+# Kubernetes tools installation (kubectl, helm, k9s)
+
+- name: Add Kubernetes repository GPG key (Debian/Ubuntu)
+  apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes repository (Debian/Ubuntu)
+  apt_repository:
+    repo: "deb https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /"
+    state: present
+    filename: kubernetes
+  when: ansible_os_family == "Debian"
+
+- name: Install kubectl (Debian/Ubuntu)
+  apt:
+    name: kubectl
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes repository (RHEL/CentOS)
+  yum_repository:
+    name: kubernetes
+    description: Kubernetes Repository
+    baseurl: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/
+    enabled: yes
+    gpgcheck: yes
+    gpgkey: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/repodata/repomd.xml.key
+  when: ansible_os_family == "RedHat"
+
+- name: Install kubectl (RHEL/CentOS)
+  yum:
+    name: kubectl
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install Helm
+  block:
+    - name: Download Helm install script
+      get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0700'
+
+    - name: Install Helm
+      command: /tmp/get_helm.sh
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Clean up Helm installer
+      file:
+        path: /tmp/get_helm.sh
+        state: absent
+
+- name: Install k9s
+  block:
+    - name: Get latest k9s version
+      uri:
+        url: https://api.github.com/repos/derailed/k9s/releases/latest
+        return_content: yes
+      register: k9s_latest
+
+    - name: Set k9s version
+      set_fact:
+        k9s_version: "{{ k9s_latest.json.tag_name }}"
+
+    - name: Download k9s
+      get_url:
+        url: "https://github.com/derailed/k9s/releases/download/{{ k9s_version }}/k9s_Linux_amd64.tar.gz"
+        dest: /tmp/k9s.tar.gz
+
+    - name: Extract k9s
+      unarchive:
+        src: /tmp/k9s.tar.gz
+        dest: /usr/local/bin
+        remote_src: yes
+        include:
+          - k9s
+        mode: '0755'
+
+    - name: Clean up k9s archive
+      file:
+        path: /tmp/k9s.tar.gz
+        state: absent
+  when: install_k9s | default(true)
+
+- name: Install kubectx and kubens
+  block:
+    - name: Clone kubectx repository
+      git:
+        repo: https://github.com/ahmetb/kubectx.git
+        dest: /opt/kubectx
+        version: master
+
+    - name: Create symlinks for kubectx and kubens
+      file:
+        src: "/opt/kubectx/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+      loop:
+        - kubectx
+        - kubens
+  when: install_kubectx | default(true)
+
+- name: Setup kubectl bash completion
+  lineinfile:
+    path: "{{ datasience_home }}/.bashrc"
+    line: "{{ item }}"
+    create: yes
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+  loop:
+    - 'source <(kubectl completion bash)'
+    - 'alias k=kubectl'
+    - 'complete -o default -F __start_kubectl k'
+
+- name: Setup helm bash completion
+  lineinfile:
+    path: "{{ datasience_home }}/.bashrc"
+    line: 'source <(helm completion bash)'
+    create: yes
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+
+- name: Install kubectl plugins via krew
+  block:
+    - name: Download krew installer
+      get_url:
+        url: https://github.com/kubernetes-sigs/krew/releases/latest/download/krew-linux_amd64.tar.gz
+        dest: /tmp/krew.tar.gz
+
+    - name: Extract and install krew
+      shell: |
+        cd /tmp
+        tar zxvf krew.tar.gz
+        ./krew-linux_amd64 install krew
+      args:
+        creates: "{{ datasience_home }}/.krew/bin/kubectl-krew"
+      become: yes
+      become_user: "{{ datasience_user }}"
+
+    - name: Add krew to PATH
+      lineinfile:
+        path: "{{ datasience_home }}/.bashrc"
+        line: 'export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"'
+        create: yes
+        owner: "{{ datasience_user }}"
+        group: "{{ datasience_user }}"
+
+    - name: Clean up krew installer
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/krew.tar.gz
+        - /tmp/krew-linux_amd64
+  when: install_krew | default(true)
+
+- name: Create kubeconfig directory
+  file:
+    path: "{{ datasience_home }}/.kube"
+    state: directory
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0700'
+
+- name: Display Kubernetes tools installation summary
+  debug:
+    msg:
+      - "Kubernetes tools installed successfully!"
+      - "kubectl version: run 'kubectl version --client'"
+      - "helm version: run 'helm version'"
+      - "k9s: run 'k9s' for interactive cluster management"
+      - ""
+      - "To use kubectl, configure your kubeconfig file in ~/.kube/config"

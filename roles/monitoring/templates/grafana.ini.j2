@@ -1,0 +1,11 @@
+[server]
+http_port = {{ grafana_port | default(3000) }}
+domain = {{ ansible_default_ipv4.address }}
+root_url = http://{{ ansible_default_ipv4.address }}:{{ grafana_port | default(3000) }}
+
+[security]
+admin_user = admin
+admin_password = admin
+
+[users]
+allow_sign_up = false

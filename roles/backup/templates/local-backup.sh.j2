@@ -1,0 +1,49 @@
+#!/bin/bash
+# Local backup script for data science environment
+
+set -e
+
+BACKUP_BASE="{{ backup_base_dir | default('/backups') }}"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_DIR="${BACKUP_BASE}/backup_${TIMESTAMP}"
+
+echo "Starting backup at $(date)"
+echo "Backup directory: ${BACKUP_DIR}"
+
+# Create backup directory
+mkdir -p "${BACKUP_DIR}"
+
+# Backup data
+echo "Backing up data..."
+rsync -av --progress {{ datasience_home }}/data/ "${BACKUP_DIR}/data/" || true
+
+# Backup notebooks
+echo "Backing up notebooks..."
+rsync -av --progress {{ datasience_home }}/notebooks/ "${BACKUP_DIR}/notebooks/" || true
+
+# Backup models
+echo "Backing up models..."
+rsync -av --progress {{ datasience_home }}/models/ "${BACKUP_DIR}/models/" || true
+
+# Backup configurations
+echo "Backing up configurations..."
+mkdir -p "${BACKUP_DIR}/configs"
+cp -r {{ datasience_home }}/.jupyter "${BACKUP_DIR}/configs/" || true
+cp -r {{ datasience_home }}/.bashrc "${BACKUP_DIR}/configs/" || true
+cp -r {{ datasience_home }}/.gitconfig "${BACKUP_DIR}/configs/" || true
+
+# Create archive
+echo "Creating archive..."
+cd "${BACKUP_BASE}"
+tar -czf "backup_${TIMESTAMP}.tar.gz" "backup_${TIMESTAMP}"
+rm -rf "backup_${TIMESTAMP}"
+
+# Keep only last {{ backup_retention_count | default(7) }} backups
+echo "Cleaning up old backups..."
+ls -t ${BACKUP_BASE}/backup_*.tar.gz | tail -n +{{ (backup_retention_count | default(7)) + 1 }} | xargs -r rm
+
+echo "Backup completed successfully at $(date)"
+echo "Backup file: ${BACKUP_BASE}/backup_${TIMESTAMP}.tar.gz"
+
+# Send notification
+/usr/local/bin/backup-notify "SUCCESS" "Backup completed: backup_${TIMESTAMP}.tar.gz"

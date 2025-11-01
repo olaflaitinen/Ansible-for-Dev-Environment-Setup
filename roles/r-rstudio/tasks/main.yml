@@ -1,0 +1,142 @@
+---
+# R and RStudio Server installation
+
+- name: Install R dependencies (Debian/Ubuntu)
+  apt:
+    name:
+      - software-properties-common
+      - dirmngr
+      - gnupg
+      - apt-transport-https
+      - ca-certificates
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add R CRAN repository GPG key (Ubuntu)
+  apt_key:
+    url: https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc
+    state: present
+  when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
+
+- name: Add R CRAN repository (Ubuntu)
+  apt_repository:
+    repo: "deb https://cloud.r-project.org/bin/linux/ubuntu {{ ansible_distribution_release }}-cran40/"
+    state: present
+  when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
+
+- name: Install R base (Debian/Ubuntu)
+  apt:
+    name:
+      - r-base
+      - r-base-dev
+      - r-recommended
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Enable EPEL and PowerTools for R (RHEL/CentOS 8+)
+  block:
+    - name: Enable PowerTools repository
+      command: dnf config-manager --set-enabled powertools
+      when: ansible_distribution_major_version|int >= 8
+      ignore_errors: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Install R base (RHEL/CentOS)
+  yum:
+    name:
+      - R
+      - R-devel
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install R system dependencies (Debian/Ubuntu)
+  apt:
+    name:
+      - libcurl4-openssl-dev
+      - libssl-dev
+      - libxml2-dev
+      - libfontconfig1-dev
+      - libharfbuzz-dev
+      - libfribidi-dev
+      - libfreetype6-dev
+      - libpng-dev
+      - libtiff5-dev
+      - libjpeg-dev
+      - gfortran
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install R system dependencies (RHEL/CentOS)
+  yum:
+    name:
+      - libcurl-devel
+      - openssl-devel
+      - libxml2-devel
+      - fontconfig-devel
+      - harfbuzz-devel
+      - fribidi-devel
+      - freetype-devel
+      - libpng-devel
+      - libtiff-devel
+      - libjpeg-turbo-devel
+      - gcc-gfortran
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install common R packages
+  shell: |
+    R -e "install.packages(c({{ r_packages | map('quote') | join(', ') }}), repos='https://cloud.r-project.org/')"
+  become: yes
+  become_user: "{{ datasience_user }}"
+  when: r_packages is defined and r_packages | length > 0
+  register: r_install
+  changed_when: "'DONE' in r_install.stdout"
+
+- name: Download RStudio Server (Debian/Ubuntu)
+  get_url:
+    url: "{{ rstudio_server_url_deb }}"
+    dest: /tmp/rstudio-server.deb
+  when: ansible_os_family == "Debian" and install_rstudio | default(true)
+
+- name: Install RStudio Server (Debian/Ubuntu)
+  apt:
+    deb: /tmp/rstudio-server.deb
+    state: present
+  when: ansible_os_family == "Debian" and install_rstudio | default(true)
+
+- name: Download RStudio Server (RHEL/CentOS)
+  get_url:
+    url: "{{ rstudio_server_url_rpm }}"
+    dest: /tmp/rstudio-server.rpm
+  when: ansible_os_family == "RedHat" and install_rstudio | default(true)
+
+- name: Install RStudio Server (RHEL/CentOS)
+  yum:
+    name: /tmp/rstudio-server.rpm
+    state: present
+  when: ansible_os_family == "RedHat" and install_rstudio | default(true)
+
+- name: Ensure RStudio Server is started and enabled
+  systemd:
+    name: rstudio-server
+    state: started
+    enabled: yes
+  when: install_rstudio | default(true)
+
+- name: Configure RStudio Server
+  template:
+    src: rserver.conf.j2
+    dest: /etc/rstudio/rserver.conf
+    mode: '0644'
+  notify: Restart RStudio Server
+  when: install_rstudio | default(true)
+
+- name: Clean up installers
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/rstudio-server.deb
+    - /tmp/rstudio-server.rpm
+  when: install_rstudio | default(true)

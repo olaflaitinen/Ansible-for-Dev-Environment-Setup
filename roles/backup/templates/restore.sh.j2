@@ -1,0 +1,63 @@
+#!/bin/bash
+# Restore script for data science environment
+
+set -e
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <backup-file.tar.gz>"
+    echo "Available backups:"
+    ls -lh {{ backup_base_dir | default('/backups') }}/backup_*.tar.gz 2>/dev/null || echo "No backups found"
+    exit 1
+fi
+
+BACKUP_FILE=$1
+RESTORE_DIR="/tmp/restore_$(date +%Y%m%d_%H%M%S)"
+
+echo "Starting restore from ${BACKUP_FILE}"
+echo "Restore directory: ${RESTORE_DIR}"
+
+# Extract backup
+mkdir -p "${RESTORE_DIR}"
+tar -xzf "${BACKUP_FILE}" -C "${RESTORE_DIR}"
+
+BACKUP_NAME=$(basename "${BACKUP_FILE}" .tar.gz)
+
+# Confirm before restore
+read -p "This will overwrite existing files. Continue? (yes/no): " CONFIRM
+if [ "${CONFIRM}" != "yes" ]; then
+    echo "Restore cancelled"
+    rm -rf "${RESTORE_DIR}"
+    exit 0
+fi
+
+# Restore data
+if [ -d "${RESTORE_DIR}/${BACKUP_NAME}/data" ]; then
+    echo "Restoring data..."
+    rsync -av "${RESTORE_DIR}/${BACKUP_NAME}/data/" {{ datasience_home }}/data/
+fi
+
+# Restore notebooks
+if [ -d "${RESTORE_DIR}/${BACKUP_NAME}/notebooks" ]; then
+    echo "Restoring notebooks..."
+    rsync -av "${RESTORE_DIR}/${BACKUP_NAME}/notebooks/" {{ datasience_home }}/notebooks/
+fi
+
+# Restore models
+if [ -d "${RESTORE_DIR}/${BACKUP_NAME}/models" ]; then
+    echo "Restoring models..."
+    rsync -av "${RESTORE_DIR}/${BACKUP_NAME}/models/" {{ datasience_home }}/models/
+fi
+
+# Restore configs
+if [ -d "${RESTORE_DIR}/${BACKUP_NAME}/configs" ]; then
+    echo "Restoring configurations..."
+    read -p "Restore configurations? (yes/no): " RESTORE_CONFIGS
+    if [ "${RESTORE_CONFIGS}" == "yes" ]; then
+        rsync -av "${RESTORE_DIR}/${BACKUP_NAME}/configs/" {{ datasience_home }}/
+    fi
+fi
+
+# Clean up
+rm -rf "${RESTORE_DIR}"
+
+echo "Restore completed successfully at $(date)"

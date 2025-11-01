@@ -1,0 +1,7 @@
+---
+# Handlers for R and RStudio Server
+
+- name: Restart RStudio Server
+  systemd:
+    name: rstudio-server
+    state: restarted

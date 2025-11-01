@@ -1,0 +1,171 @@
+---
+# Automated backup configuration
+
+- name: Install backup tools (Debian/Ubuntu)
+  apt:
+    name:
+      - rsync
+      - borgbackup
+      - rclone
+      - zip
+      - unzip
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install backup tools (RHEL/CentOS)
+  yum:
+    name:
+      - rsync
+      - borgbackup
+      - zip
+      - unzip
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install rclone (RHEL/CentOS)
+  block:
+    - name: Download rclone installer
+      get_url:
+        url: https://rclone.org/install.sh
+        dest: /tmp/rclone-install.sh
+        mode: '0755'
+
+    - name: Install rclone
+      command: /tmp/rclone-install.sh
+      args:
+        creates: /usr/bin/rclone
+
+    - name: Clean up rclone installer
+      file:
+        path: /tmp/rclone-install.sh
+        state: absent
+  when: ansible_os_family == "RedHat"
+
+- name: Create backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0755'
+  loop:
+    - "{{ backup_base_dir | default('/backups') }}"
+    - "{{ backup_base_dir | default('/backups') }}/data"
+    - "{{ backup_base_dir | default('/backups') }}/notebooks"
+    - "{{ backup_base_dir | default('/backups') }}/models"
+    - "{{ backup_base_dir | default('/backups') }}/configs"
+    - "{{ datasience_home }}/.config/borg"
+    - "{{ datasience_home }}/.config/rclone"
+
+- name: Create backup script for local backups
+  template:
+    src: local-backup.sh.j2
+    dest: /usr/local/bin/datasience-backup
+    mode: '0755'
+
+- name: Create Borg backup repository
+  shell: |
+    borg init --encryption={{ borg_encryption | default('repokey') }} {{ borg_repo }}
+  args:
+    creates: "{{ borg_repo }}/config"
+  environment:
+    BORG_PASSPHRASE: "{{ borg_passphrase | default('changeme') }}"
+  become: yes
+  become_user: "{{ datasience_user }}"
+  when: backup_method == "borg" and borg_repo is defined
+
+- name: Create Borg backup script
+  template:
+    src: borg-backup.sh.j2
+    dest: /usr/local/bin/borg-datasience-backup
+    mode: '0755'
+  when: backup_method == "borg"
+
+- name: Create rclone configuration template
+  template:
+    src: rclone.conf.j2
+    dest: "{{ datasience_home }}/.config/rclone/rclone.conf.example"
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0600'
+  when: backup_method == "rclone"
+
+- name: Create rclone backup script
+  template:
+    src: rclone-backup.sh.j2
+    dest: /usr/local/bin/rclone-datasience-backup
+    mode: '0755'
+  when: backup_method == "rclone"
+
+- name: Configure backup cron job
+  cron:
+    name: "Data Science Environment Backup"
+    minute: "{{ backup_cron_minute | default('0') }}"
+    hour: "{{ backup_cron_hour | default('2') }}"
+    day: "{{ backup_cron_day | default('*') }}"
+    month: "{{ backup_cron_month | default('*') }}"
+    weekday: "{{ backup_cron_weekday | default('*') }}"
+    user: "{{ datasience_user }}"
+    job: "/usr/local/bin/datasience-backup >> {{ datasience_home }}/backup.log 2>&1"
+    state: "{{ 'present' if enable_backup_cron | default(false) else 'absent' }}"
+
+- name: Create backup configuration file
+  template:
+    src: backup-config.yml.j2
+    dest: "{{ datasience_home }}/.backup-config.yml"
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0600'
+
+- name: Create restore script
+  template:
+    src: restore.sh.j2
+    dest: /usr/local/bin/datasience-restore
+    mode: '0755'
+
+- name: Install Python backup utilities
+  pip:
+    name:
+      - python-dotenv
+      - pyyaml
+    state: present
+    executable: pip3
+  become: yes
+  become_user: "{{ datasience_user }}"
+
+- name: Create backup notification script
+  copy:
+    dest: /usr/local/bin/backup-notify
+    content: |
+      #!/bin/bash
+      # Backup notification script
+      # Customize this to send notifications (email, Slack, etc.)
+
+      BACKUP_STATUS=$1
+      BACKUP_MESSAGE=$2
+
+      echo "[$(date)] Backup ${BACKUP_STATUS}: ${BACKUP_MESSAGE}" >> {{ datasience_home }}/backup-notifications.log
+
+      # Example: Send email (uncomment and configure)
+      # echo "${BACKUP_MESSAGE}" | mail -s "Backup ${BACKUP_STATUS}" admin@example.com
+
+      # Example: Send to Slack (uncomment and configure)
+      # curl -X POST -H 'Content-type: application/json' \
+      #   --data "{\"text\":\"Backup ${BACKUP_STATUS}: ${BACKUP_MESSAGE}\"}" \
+      #   YOUR_SLACK_WEBHOOK_URL
+    mode: '0755'
+
+- name: Display backup configuration summary
+  debug:
+    msg:
+      - "Backup system configured successfully!"
+      - "Backup directory: {{ backup_base_dir | default('/backups') }}"
+      - "Backup method: {{ backup_method | default('local') }}"
+      - ""
+      - "Manual backup commands:"
+      - "  Local backup: sudo datasience-backup"
+      - "{% if backup_method == 'borg' %}  Borg backup: sudo borg-datasience-backup{% endif %}"
+      - "{% if backup_method == 'rclone' %}  Rclone backup: sudo rclone-datasience-backup{% endif %}"
+      - ""
+      - "Restore command: sudo datasience-restore"
+      - "{% if enable_backup_cron | default(false) %}Automated backups: Enabled ({{ backup_cron_hour | default('2') }}:{{ backup_cron_minute | default('0') }} daily){% endif %}"

@@ -1,0 +1,226 @@
+---
+# Monitoring tools - Prometheus and Grafana
+
+- name: Create Prometheus user
+  user:
+    name: prometheus
+    system: yes
+    shell: /bin/false
+    create_home: no
+
+- name: Create Prometheus directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: '0755'
+  loop:
+    - /etc/prometheus
+    - /var/lib/prometheus
+
+- name: Download and install Prometheus
+  block:
+    - name: Get latest Prometheus version
+      uri:
+        url: https://api.github.com/repos/prometheus/prometheus/releases/latest
+        return_content: yes
+      register: prometheus_latest
+
+    - name: Set Prometheus version
+      set_fact:
+        prometheus_version: "{{ prometheus_latest.json.tag_name | regex_replace('^v', '') }}"
+
+    - name: Download Prometheus
+      get_url:
+        url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+        dest: /tmp/prometheus.tar.gz
+
+    - name: Extract Prometheus
+      unarchive:
+        src: /tmp/prometheus.tar.gz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Copy Prometheus binaries
+      copy:
+        src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+        dest: /usr/local/bin/
+        remote_src: yes
+        owner: prometheus
+        group: prometheus
+        mode: '0755'
+      loop:
+        - prometheus
+        - promtool
+
+    - name: Copy Prometheus console files
+      copy:
+        src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+        dest: /etc/prometheus/
+        remote_src: yes
+        owner: prometheus
+        group: prometheus
+        directory_mode: '0755'
+      loop:
+        - consoles
+        - console_libraries
+
+    - name: Clean up Prometheus download
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/prometheus.tar.gz
+        - "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"
+
+- name: Configure Prometheus
+  template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: prometheus
+    group: prometheus
+    mode: '0644'
+  notify: Restart Prometheus
+
+- name: Create Prometheus systemd service
+  template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart Prometheus
+
+- name: Start and enable Prometheus
+  systemd:
+    name: prometheus
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Install Node Exporter
+  block:
+    - name: Create node_exporter user
+      user:
+        name: node_exporter
+        system: yes
+        shell: /bin/false
+        create_home: no
+
+    - name: Get latest Node Exporter version
+      uri:
+        url: https://api.github.com/repos/prometheus/node_exporter/releases/latest
+        return_content: yes
+      register: node_exporter_latest
+
+    - name: Set Node Exporter version
+      set_fact:
+        node_exporter_version: "{{ node_exporter_latest.json.tag_name | regex_replace('^v', '') }}"
+
+    - name: Download Node Exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        dest: /tmp/node_exporter.tar.gz
+
+    - name: Extract Node Exporter
+      unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Copy Node Exporter binary
+      copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+        dest: /usr/local/bin/node_exporter
+        remote_src: yes
+        owner: node_exporter
+        group: node_exporter
+        mode: '0755'
+
+    - name: Create Node Exporter systemd service
+      template:
+        src: node_exporter.service.j2
+        dest: /etc/systemd/system/node_exporter.service
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart Node Exporter
+
+    - name: Start and enable Node Exporter
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Clean up Node Exporter download
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/node_exporter.tar.gz
+        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"
+  when: install_node_exporter | default(true)
+
+- name: Install Grafana (Debian/Ubuntu)
+  block:
+    - name: Add Grafana GPG key
+      apt_key:
+        url: https://apt.grafana.com/gpg.key
+        state: present
+
+    - name: Add Grafana repository
+      apt_repository:
+        repo: "deb https://apt.grafana.com stable main"
+        state: present
+
+    - name: Install Grafana
+      apt:
+        name: grafana
+        state: present
+        update_cache: yes
+  when: ansible_os_family == "Debian" and install_grafana | default(true)
+
+- name: Install Grafana (RHEL/CentOS)
+  block:
+    - name: Add Grafana repository
+      yum_repository:
+        name: grafana
+        description: Grafana Repository
+        baseurl: https://rpm.grafana.com
+        enabled: yes
+        gpgcheck: yes
+        gpgkey: https://rpm.grafana.com/gpg.key
+
+    - name: Install Grafana
+      yum:
+        name: grafana
+        state: present
+  when: ansible_os_family == "RedHat" and install_grafana | default(true)
+
+- name: Configure Grafana
+  template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: grafana
+    group: grafana
+    mode: '0640'
+  notify: Restart Grafana
+  when: install_grafana | default(true)
+
+- name: Start and enable Grafana
+  systemd:
+    name: grafana-server
+    state: started
+    enabled: yes
+  when: install_grafana | default(true)
+
+- name: Display monitoring setup information
+  debug:
+    msg:
+      - "Monitoring stack installed successfully!"
+      - "Prometheus: http://{{ ansible_default_ipv4.address }}:{{ prometheus_port | default(9090) }}"
+      - "Node Exporter: http://{{ ansible_default_ipv4.address }}:9100/metrics"
+      - "Grafana: http://{{ ansible_default_ipv4.address }}:{{ grafana_port | default(3000) }}"
+      - "Default Grafana credentials: admin / admin (change on first login)"
