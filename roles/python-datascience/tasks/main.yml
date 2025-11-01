@@ -1,0 +1,93 @@
+---
+# Python and Data Science packages installation
+
+- name: Add deadsnakes PPA for Python versions
+  apt_repository:
+    repo: ppa:deadsnakes/ppa
+    state: present
+  when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
+
+- name: Install Python and related packages
+  apt:
+    name:
+      - "python{{ python_version }}"
+      - "python{{ python_version }}-dev"
+      - "python{{ python_version }}-venv"
+      - python3-pip
+      - python3-setuptools
+      - python3-wheel
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Set Python alternative
+  alternatives:
+    name: python3
+    path: "/usr/bin/python{{ python_version }}"
+    link: /usr/bin/python3
+  when: ansible_os_family == "Debian"
+
+- name: Upgrade pip
+  pip:
+    name: pip
+    state: latest
+    executable: pip3
+
+- name: Install Miniconda
+  block:
+    - name: Download Miniconda installer
+      get_url:
+        url: https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        dest: /tmp/miniconda.sh
+        mode: '0755'
+
+    - name: Install Miniconda
+      shell: /tmp/miniconda.sh -b -p {{ datasience_home }}/miniconda3
+      args:
+        creates: "{{ datasience_home }}/miniconda3"
+      become: yes
+      become_user: "{{ datasience_user }}"
+
+    - name: Initialize conda for bash
+      shell: "{{ datasience_home }}/miniconda3/bin/conda init bash"
+      become: yes
+      become_user: "{{ datasience_user }}"
+      args:
+        creates: "{{ datasience_home }}/.bashrc"
+
+    - name: Create conda environment
+      shell: |
+        source {{ datasience_home }}/miniconda3/bin/activate
+        conda create -n {{ conda_env_name }} python={{ python_version }} -y
+      args:
+        creates: "{{ datasience_home }}/miniconda3/envs/{{ conda_env_name }}"
+      become: yes
+      become_user: "{{ datasience_user }}"
+
+    - name: Clean up installer
+      file:
+        path: /tmp/miniconda.sh
+        state: absent
+  when: install_conda | default(true)
+
+- name: Install data science Python packages
+  pip:
+    name: "{{ pip_packages }}"
+    state: present
+    executable: pip3
+  become: yes
+  become_user: "{{ datasience_user }}"
+
+- name: Install additional system dependencies for data science
+  apt:
+    name:
+      - libhdf5-dev
+      - libopenblas-dev
+      - liblapack-dev
+      - gfortran
+      - libfreetype6-dev
+      - libpng-dev
+      - pkg-config
+      - graphviz
+    state: present
+  when: ansible_os_family == "Debian"

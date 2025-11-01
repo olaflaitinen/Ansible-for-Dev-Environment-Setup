@@ -1,0 +1,14 @@
+[Unit]
+Description=Jupyter Lab
+After=network.target
+
+[Service]
+Type=simple
+User={{ datasience_user }}
+WorkingDirectory={{ datasience_home }}/notebooks
+ExecStart={{ datasience_home }}/start-jupyter.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,95 @@
+---
+# Global variables for all hosts
+
+# User Configuration
+datasience_user: "{{ ansible_user | default('ubuntu') }}"
+datasience_home: "/home/{{ datasience_user }}"
+
+# Python Configuration
+python_version: "3.11"
+pip_packages:
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - plotly
+  - scipy
+  - statsmodels
+  - jupyter
+  - jupyterlab
+  - ipython
+  - notebook
+  - tensorflow
+  - torch
+  - keras
+  - xgboost
+  - lightgbm
+  - catboost
+  - opencv-python
+  - pillow
+  - requests
+  - beautifulsoup4
+  - sqlalchemy
+  - psycopg2-binary
+  - pymongo
+  - redis
+  - boto3
+  - google-cloud-storage
+  - azure-storage-blob
+  - mlflow
+  - wandb
+  - optuna
+  - streamlit
+  - dash
+  - fastapi
+  - uvicorn
+  - pytest
+  - black
+  - flake8
+  - mypy
+  - pre-commit
+
+# Conda Configuration
+install_conda: true
+conda_version: "latest"
+conda_env_name: "datasience"
+
+# Jupyter Configuration
+jupyter_port: 8888
+jupyter_config_dir: "{{ datasience_home }}/.jupyter"
+
+# Docker Configuration
+install_docker: true
+docker_users:
+  - "{{ datasience_user }}"
+
+# Development Tools
+dev_tools:
+  - git
+  - vim
+  - tmux
+  - htop
+  - tree
+  - curl
+  - wget
+  - unzip
+  - build-essential
+  - software-properties-common
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Database Tools
+install_postgres_client: true
+install_mysql_client: true
+
+# Cloud CLI Tools
+install_aws_cli: true
+install_gcloud_cli: false
+install_azure_cli: false
+
+# VSCode Server
+install_code_server: false
+code_server_port: 8080
