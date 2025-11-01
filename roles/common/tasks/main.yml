@@ -1,0 +1,47 @@
+---
+# Common role - Base system setup
+
+- name: Install essential development tools
+  apt:
+    name: "{{ dev_tools }}"
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Configure git
+  git_config:
+    scope: global
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+  loop:
+    - { name: "core.editor", value: "vim" }
+    - { name: "pull.rebase", value: "false" }
+  become: yes
+  become_user: "{{ datasience_user }}"
+
+- name: Create common directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0755'
+  loop:
+    - "{{ datasience_home }}/projects"
+    - "{{ datasience_home }}/data"
+    - "{{ datasience_home }}/models"
+    - "{{ datasience_home }}/notebooks"
+    - "{{ datasience_home }}/.local/bin"
+
+- name: Add local bin to PATH
+  lineinfile:
+    path: "{{ datasience_home }}/.bashrc"
+    line: 'export PATH="$HOME/.local/bin:$PATH"'
+    create: yes
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+
+- name: Set timezone
+  timezone:
+    name: UTC
+  when: ansible_os_family == "Debian"

@@ -1,0 +1,137 @@
+---
+# Development tools and utilities
+
+- name: Install database clients
+  block:
+    - name: Install PostgreSQL client
+      apt:
+        name:
+          - postgresql-client
+          - libpq-dev
+        state: present
+      when: install_postgres_client | default(true)
+
+    - name: Install MySQL client
+      apt:
+        name:
+          - mysql-client
+          - libmysqlclient-dev
+        state: present
+      when: install_mysql_client | default(true)
+  when: ansible_os_family == "Debian"
+
+- name: Install AWS CLI
+  block:
+    - name: Download AWS CLI installer
+      get_url:
+        url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: /tmp/awscliv2.zip
+
+    - name: Unzip AWS CLI installer
+      unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp
+        remote_src: yes
+
+    - name: Install AWS CLI
+      command: /tmp/aws/install
+      args:
+        creates: /usr/local/bin/aws
+
+    - name: Clean up AWS CLI installer
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/awscliv2.zip
+        - /tmp/aws
+  when: install_aws_cli | default(true)
+
+- name: Install Google Cloud SDK
+  block:
+    - name: Add Google Cloud SDK GPG key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Google Cloud SDK repository
+      apt_repository:
+        repo: "deb https://packages.cloud.google.com/apt cloud-sdk main"
+        state: present
+
+    - name: Install Google Cloud SDK
+      apt:
+        name: google-cloud-sdk
+        state: present
+        update_cache: yes
+  when: install_gcloud_cli | default(false) and ansible_os_family == "Debian"
+
+- name: Install Azure CLI
+  block:
+    - name: Add Microsoft GPG key
+      apt_key:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        state: present
+
+    - name: Add Azure CLI repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ {{ ansible_distribution_release }} main"
+        state: present
+
+    - name: Install Azure CLI
+      apt:
+        name: azure-cli
+        state: present
+        update_cache: yes
+  when: install_azure_cli | default(false) and ansible_os_family == "Debian"
+
+- name: Install VSCode Server (code-server)
+  block:
+    - name: Download code-server
+      get_url:
+        url: https://github.com/coder/code-server/releases/latest/download/code-server_amd64.deb
+        dest: /tmp/code-server.deb
+
+    - name: Install code-server
+      apt:
+        deb: /tmp/code-server.deb
+        state: present
+
+    - name: Clean up code-server installer
+      file:
+        path: /tmp/code-server.deb
+        state: absent
+
+    - name: Create code-server config directory
+      file:
+        path: "{{ datasience_home }}/.config/code-server"
+        state: directory
+        owner: "{{ datasience_user }}"
+        group: "{{ datasience_user }}"
+        mode: '0755'
+
+    - name: Configure code-server
+      copy:
+        dest: "{{ datasience_home }}/.config/code-server/config.yaml"
+        content: |
+          bind-addr: 0.0.0.0:{{ code_server_port }}
+          auth: password
+          cert: false
+        owner: "{{ datasience_user }}"
+        group: "{{ datasience_user }}"
+        mode: '0644'
+  when: install_code_server | default(false)
+
+- name: Install additional development tools
+  pip:
+    name:
+      - cookiecutter
+      - poetry
+      - pipenv
+      - virtualenv
+      - tox
+      - pylint
+    state: present
+    executable: pip3
+  become: yes
+  become_user: "{{ datasience_user }}"

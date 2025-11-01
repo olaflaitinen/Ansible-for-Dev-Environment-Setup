@@ -1,0 +1,69 @@
+---
+# Main playbook for setting up Data Science Development Environment
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts playbooks/setup-datasience-env.yml
+#
+# For specific host:
+#   ansible-playbook -i inventory/hosts playbooks/setup-datasience-env.yml --limit localhost
+#
+# With tags:
+#   ansible-playbook -i inventory/hosts playbooks/setup-datasience-env.yml --tags python,jupyter
+
+- name: Setup Data Science Development Environment
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+      tags: always
+
+    - name: Ensure system is up to date
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      when: ansible_os_family == "Debian"
+      tags: system
+
+  roles:
+    - role: common
+      tags: ['common', 'base']
+
+    - role: python-datascience
+      tags: ['python', 'datascience']
+
+    - role: docker
+      when: install_docker | default(true)
+      tags: ['docker', 'containers']
+
+    - role: jupyter
+      tags: ['jupyter', 'notebook']
+
+    - role: dev-tools
+      tags: ['dev-tools', 'tools']
+
+  post_tasks:
+    - name: Display installation summary
+      debug:
+        msg:
+          - "=============================================="
+          - "Data Science Environment Setup Complete!"
+          - "=============================================="
+          - "Python version: {{ python_version }}"
+          - "Conda installed: {{ install_conda }}"
+          - "Docker installed: {{ install_docker }}"
+          - "Jupyter Lab accessible at: http://{{ ansible_default_ipv4.address }}:{{ jupyter_port }}"
+          - ""
+          - "To start Jupyter Lab:"
+          - "  jupyter lab --ip=0.0.0.0 --port={{ jupyter_port }} --no-browser"
+          - ""
+          - "To activate conda environment:"
+          - "  conda activate {{ conda_env_name }}"
+          - "=============================================="
+      tags: always

@@ -1,0 +1,16 @@
+# Ansible Inventory for Data Science Development Environment
+#
+# Usage:
+# - For local VM: ansible-playbook -i inventory/hosts playbooks/setup-datasience-env.yml --limit localhost
+# - For remote VMs: Update the [datasience_vms] section with your VM details
+
+[local]
+localhost ansible_connection=local
+
+[datasience_vms]
+# Example remote VM entries (uncomment and modify as needed):
+# vm1 ansible_host=192.168.1.10 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+# vm2 ansible_host=192.168.1.11 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3

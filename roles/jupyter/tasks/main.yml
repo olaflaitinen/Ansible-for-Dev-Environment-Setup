@@ -1,0 +1,75 @@
+---
+# Jupyter Lab/Notebook configuration
+
+- name: Ensure Jupyter is installed
+  pip:
+    name:
+      - jupyter
+      - jupyterlab
+      - notebook
+    state: present
+    executable: pip3
+  become: yes
+  become_user: "{{ datasience_user }}"
+
+- name: Create Jupyter config directory
+  file:
+    path: "{{ jupyter_config_dir }}"
+    state: directory
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0755'
+
+- name: Generate Jupyter config
+  shell: jupyter lab --generate-config
+  args:
+    creates: "{{ jupyter_config_dir }}/jupyter_lab_config.py"
+  become: yes
+  become_user: "{{ datasience_user }}"
+
+- name: Configure Jupyter Lab
+  lineinfile:
+    path: "{{ jupyter_config_dir }}/jupyter_lab_config.py"
+    line: "{{ item }}"
+    create: yes
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+  loop:
+    - "c.ServerApp.ip = '0.0.0.0'"
+    - "c.ServerApp.port = {{ jupyter_port }}"
+    - "c.ServerApp.open_browser = False"
+    - "c.ServerApp.allow_root = False"
+    - "c.ServerApp.notebook_dir = '{{ datasience_home }}/notebooks'"
+
+- name: Install useful Jupyter extensions
+  pip:
+    name:
+      - jupyterlab-git
+      - jupyterlab-lsp
+      - python-lsp-server
+      - ipywidgets
+      - jupyter-nbextensions-configurator
+    state: present
+    executable: pip3
+  become: yes
+  become_user: "{{ datasience_user }}"
+
+- name: Create systemd service for Jupyter Lab
+  template:
+    src: jupyter.service.j2
+    dest: /etc/systemd/system/jupyter.service
+    mode: '0644'
+  notify: Reload systemd
+
+- name: Create Jupyter startup script
+  copy:
+    dest: "{{ datasience_home }}/start-jupyter.sh"
+    content: |
+      #!/bin/bash
+      source {{ datasience_home }}/miniconda3/bin/activate
+      conda activate {{ conda_env_name }}
+      jupyter lab --ip=0.0.0.0 --port={{ jupyter_port }} --no-browser
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0755'
+  when: install_conda | default(true)
