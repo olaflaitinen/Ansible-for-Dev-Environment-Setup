@@ -1,12 +1,24 @@
 ---
 # Common role - Base system setup
 
-- name: Install essential development tools
+- name: Install essential development tools (Debian/Ubuntu)
   apt:
     name: "{{ dev_tools }}"
     state: present
     update_cache: yes
   when: ansible_os_family == "Debian"
+
+- name: Install essential development tools (RHEL/CentOS)
+  yum:
+    name: "{{ dev_tools_rhel }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Enable EPEL repository (RHEL/CentOS)
+  yum:
+    name: epel-release
+    state: present
+  when: ansible_os_family == "RedHat"
 
 - name: Configure git
   git_config:
@@ -44,4 +56,3 @@
 - name: Set timezone
   timezone:
     name: UTC
-  when: ansible_os_family == "Debian"

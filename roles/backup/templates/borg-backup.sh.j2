@@ -1,0 +1,51 @@
+#!/bin/bash
+# Borg backup script for data science environment
+
+set -e
+
+export BORG_REPO="{{ borg_repo }}"
+export BORG_PASSPHRASE="{{ borg_passphrase | default('changeme') }}"
+
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+echo "Starting Borg backup at $(date)"
+
+# Backup
+borg create \
+    --verbose \
+    --filter AME \
+    --list \
+    --stats \
+    --show-rc \
+    --compression {{ borg_compression | default('lz4') }} \
+    --exclude-caches \
+    ::"{hostname}-${TIMESTAMP}" \
+    {{ datasience_home }}/data \
+    {{ datasience_home }}/notebooks \
+    {{ datasience_home }}/models \
+    {{ datasience_home }}/.jupyter \
+    {{ datasience_home }}/.bashrc
+
+backup_exit=$?
+
+# Prune old backups
+echo "Pruning old backups..."
+borg prune \
+    --list \
+    --prefix '{hostname}-' \
+    --show-rc \
+    --keep-daily {{ borg_keep_daily | default(7) }} \
+    --keep-weekly {{ borg_keep_weekly | default(4) }} \
+    --keep-monthly {{ borg_keep_monthly | default(6) }}
+
+prune_exit=$?
+
+# Check for errors
+if [ ${backup_exit} -eq 0 ] && [ ${prune_exit} -eq 0 ]; then
+    echo "Borg backup completed successfully at $(date)"
+    /usr/local/bin/backup-notify "SUCCESS" "Borg backup completed: {hostname}-${TIMESTAMP}"
+else
+    echo "Borg backup failed at $(date)"
+    /usr/local/bin/backup-notify "FAILED" "Borg backup failed"
+    exit 1
+fi

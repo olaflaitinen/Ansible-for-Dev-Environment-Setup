@@ -1,0 +1,16 @@
+---
+# Handlers for JupyterHub role
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Restart JupyterHub
+  systemd:
+    name: jupyterhub
+    state: restarted
+
+- name: Restart Nginx
+  systemd:
+    name: nginx
+    state: restarted

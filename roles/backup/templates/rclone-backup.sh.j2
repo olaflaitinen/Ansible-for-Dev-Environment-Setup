@@ -1,0 +1,38 @@
+#!/bin/bash
+# Rclone backup script for data science environment
+
+set -e
+
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+REMOTE="{{ rclone_remote | default('remote') }}"
+REMOTE_PATH="{{ rclone_remote_path | default('datasience-backups') }}"
+
+echo "Starting rclone backup at $(date)"
+
+# Sync data
+echo "Syncing data..."
+rclone sync {{ datasience_home }}/data "${REMOTE}:${REMOTE_PATH}/data" \
+    --progress \
+    --transfers {{ rclone_transfers | default(4) }} \
+    --checkers {{ rclone_checkers | default(8) }} \
+    {{ '--delete-excluded' if rclone_delete_excluded | default(false) else '' }}
+
+# Sync notebooks
+echo "Syncing notebooks..."
+rclone sync {{ datasience_home }}/notebooks "${REMOTE}:${REMOTE_PATH}/notebooks" \
+    --progress \
+    --transfers {{ rclone_transfers | default(4) }}
+
+# Sync models
+echo "Syncing models..."
+rclone sync {{ datasience_home }}/models "${REMOTE}:${REMOTE_PATH}/models" \
+    --progress \
+    --transfers {{ rclone_transfers | default(4) }}
+
+# Copy configs (snapshot, not sync)
+echo "Backing up configs..."
+rclone copy {{ datasience_home }}/.jupyter "${REMOTE}:${REMOTE_PATH}/configs-${TIMESTAMP}/.jupyter"
+rclone copy {{ datasience_home }}/.bashrc "${REMOTE}:${REMOTE_PATH}/configs-${TIMESTAMP}/"
+
+echo "Rclone backup completed successfully at $(date)"
+/usr/local/bin/backup-notify "SUCCESS" "Rclone backup completed to ${REMOTE}:${REMOTE_PATH}"

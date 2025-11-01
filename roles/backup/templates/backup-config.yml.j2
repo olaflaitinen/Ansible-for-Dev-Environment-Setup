@@ -1,0 +1,35 @@
+# Backup Configuration for Data Science Environment
+
+backup_method: "{{ backup_method | default('local') }}"
+backup_base_dir: "{{ backup_base_dir | default('/backups') }}"
+
+# Retention settings
+backup_retention_count: {{ backup_retention_count | default(7) }}
+
+# Cron schedule (if enabled)
+enable_backup_cron: {{ enable_backup_cron | default(false) }}
+backup_cron_hour: "{{ backup_cron_hour | default('2') }}"
+backup_cron_minute: "{{ backup_cron_minute | default('0') }}"
+
+# Borg settings
+{% if backup_method == "borg" %}
+borg_repo: "{{ borg_repo }}"
+borg_compression: "{{ borg_compression | default('lz4') }}"
+borg_keep_daily: {{ borg_keep_daily | default(7) }}
+borg_keep_weekly: {{ borg_keep_weekly | default(4) }}
+borg_keep_monthly: {{ borg_keep_monthly | default(6) }}
+{% endif %}
+
+# Rclone settings
+{% if backup_method == "rclone" %}
+rclone_remote: "{{ rclone_remote | default('remote') }}"
+rclone_remote_path: "{{ rclone_remote_path | default('datasience-backups') }}"
+rclone_transfers: {{ rclone_transfers | default(4) }}
+{% endif %}
+
+# Directories to backup
+backup_paths:
+  - {{ datasience_home }}/data
+  - {{ datasience_home }}/notebooks
+  - {{ datasience_home }}/models
+  - {{ datasience_home }}/.jupyter

@@ -1,0 +1,188 @@
+---
+# GPU Support - CUDA and cuDNN installation
+
+- name: Check if NVIDIA GPU is present
+  shell: lspci | grep -i nvidia || true
+  register: nvidia_gpu
+  changed_when: false
+
+- name: Display GPU detection result
+  debug:
+    msg: "NVIDIA GPU {{ 'detected' if nvidia_gpu.stdout else 'not detected' }}"
+
+- name: Install NVIDIA drivers and CUDA (Debian/Ubuntu)
+  block:
+    - name: Install required dependencies
+      apt:
+        name:
+          - build-essential
+          - dkms
+          - linux-headers-{{ ansible_kernel }}
+        state: present
+
+    - name: Add NVIDIA CUDA repository GPG key
+      apt_key:
+        url: https://developer.download.nvidia.com/compute/cuda/repos/{{ cuda_repo_ubuntu }}/x86_64/3bf863cc.pub
+        state: present
+
+    - name: Add NVIDIA CUDA repository
+      apt_repository:
+        repo: "deb https://developer.download.nvidia.com/compute/cuda/repos/{{ cuda_repo_ubuntu }}/x86_64/ /"
+        state: present
+        filename: cuda
+
+    - name: Install NVIDIA driver
+      apt:
+        name: nvidia-driver-{{ nvidia_driver_version }}
+        state: present
+        update_cache: yes
+      when: install_nvidia_driver | default(true)
+
+    - name: Install CUDA toolkit
+      apt:
+        name: cuda-{{ cuda_version }}
+        state: present
+      when: install_cuda | default(true)
+  when: ansible_os_family == "Debian" and nvidia_gpu.stdout != ""
+
+- name: Install NVIDIA drivers and CUDA (RHEL/CentOS)
+  block:
+    - name: Install required dependencies
+      yum:
+        name:
+          - kernel-devel-{{ ansible_kernel }}
+          - kernel-headers-{{ ansible_kernel }}
+          - gcc
+          - make
+          - dkms
+        state: present
+
+    - name: Add NVIDIA CUDA repository
+      yum:
+        name: "https://developer.download.nvidia.com/compute/cuda/repos/{{ cuda_repo_rhel }}/x86_64/cuda-repo-{{ cuda_repo_rhel }}-{{ cuda_version }}.x86_64.rpm"
+        state: present
+        disable_gpg_check: yes
+
+    - name: Install NVIDIA driver
+      yum:
+        name: nvidia-driver-latest-dkms
+        state: present
+      when: install_nvidia_driver | default(true)
+
+    - name: Install CUDA toolkit
+      yum:
+        name: cuda
+        state: present
+      when: install_cuda | default(true)
+  when: ansible_os_family == "RedHat" and nvidia_gpu.stdout != ""
+
+- name: Add CUDA to PATH and LD_LIBRARY_PATH
+  lineinfile:
+    path: "{{ datasience_home }}/.bashrc"
+    line: "{{ item }}"
+    create: yes
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+  loop:
+    - 'export PATH=/usr/local/cuda/bin:$PATH'
+    - 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH'
+  when: install_cuda | default(true) and nvidia_gpu.stdout != ""
+
+- name: Install cuDNN
+  block:
+    - name: Check if cuDNN archive exists
+      stat:
+        path: "{{ cudnn_archive_path }}"
+      register: cudnn_archive
+      when: cudnn_archive_path is defined
+
+    - name: Extract cuDNN archive
+      unarchive:
+        src: "{{ cudnn_archive_path }}"
+        dest: /usr/local/cuda/
+        remote_src: no
+        extra_opts: [--strip-components=1]
+      when: cudnn_archive is defined and cudnn_archive.stat.exists
+
+    - name: Display cuDNN installation note
+      debug:
+        msg: |
+          To install cuDNN, please:
+          1. Download cuDNN from NVIDIA (requires registration): https://developer.nvidia.com/cudnn
+          2. Set cudnn_archive_path variable to the downloaded tar file path
+          3. Re-run the playbook
+      when: cudnn_archive_path is not defined or not cudnn_archive.stat.exists
+  when: install_cudnn | default(false) and nvidia_gpu.stdout != ""
+
+- name: Install TensorFlow GPU support
+  pip:
+    name:
+      - tensorflow[and-cuda]
+    state: present
+    executable: pip3
+  become: yes
+  become_user: "{{ datasience_user }}"
+  when: install_tensorflow_gpu | default(true) and nvidia_gpu.stdout != ""
+
+- name: Install PyTorch with CUDA support
+  pip:
+    name:
+      - torch
+      - torchvision
+      - torchaudio
+    extra_args: --index-url https://download.pytorch.org/whl/cu{{ cuda_version | replace('.', '') | regex_replace('^(..).*', '\\1') }}1
+    state: present
+    executable: pip3
+  become: yes
+  become_user: "{{ datasience_user }}"
+  when: install_pytorch_gpu | default(true) and nvidia_gpu.stdout != ""
+
+- name: Create GPU verification script
+  copy:
+    dest: "{{ datasience_home }}/verify_gpu.py"
+    content: |
+      #!/usr/bin/env python3
+      import sys
+
+      print("=== GPU Verification ===\n")
+
+      # Check TensorFlow
+      try:
+          import tensorflow as tf
+          print(f"TensorFlow version: {tf.__version__}")
+          gpus = tf.config.list_physical_devices('GPU')
+          print(f"TensorFlow GPUs available: {len(gpus)}")
+          for gpu in gpus:
+              print(f"  - {gpu}")
+      except ImportError:
+          print("TensorFlow not installed")
+      except Exception as e:
+          print(f"TensorFlow error: {e}")
+
+      print()
+
+      # Check PyTorch
+      try:
+          import torch
+          print(f"PyTorch version: {torch.__version__}")
+          print(f"CUDA available: {torch.cuda.is_available()}")
+          if torch.cuda.is_available():
+              print(f"CUDA version: {torch.version.cuda}")
+              print(f"Number of GPUs: {torch.cuda.device_count()}")
+              for i in range(torch.cuda.device_count()):
+                  print(f"  - GPU {i}: {torch.cuda.get_device_name(i)}")
+      except ImportError:
+          print("PyTorch not installed")
+      except Exception as e:
+          print(f"PyTorch error: {e}")
+    owner: "{{ datasience_user }}"
+    group: "{{ datasience_user }}"
+    mode: '0755'
+  when: nvidia_gpu.stdout != ""
+
+- name: Display GPU setup completion message
+  debug:
+    msg: |
+      GPU setup complete! Please reboot the system for driver changes to take effect.
+      After reboot, run: ~/verify_gpu.py to verify GPU detection.
+  when: nvidia_gpu.stdout != ""

@@ -1,13 +1,13 @@
 ---
 # Python and Data Science packages installation
 
-- name: Add deadsnakes PPA for Python versions
+- name: Add deadsnakes PPA for Python versions (Ubuntu)
   apt_repository:
     repo: ppa:deadsnakes/ppa
     state: present
   when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
 
-- name: Install Python and related packages
+- name: Install Python and related packages (Debian/Ubuntu)
   apt:
     name:
       - "python{{ python_version }}"
@@ -20,12 +20,24 @@
     update_cache: yes
   when: ansible_os_family == "Debian"
 
-- name: Set Python alternative
+- name: Install Python and related packages (RHEL/CentOS)
+  yum:
+    name:
+      - python3
+      - python3-devel
+      - python3-pip
+      - python3-setuptools
+      - python3-wheel
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Set Python alternative (Debian/Ubuntu)
   alternatives:
     name: python3
     path: "/usr/bin/python{{ python_version }}"
     link: /usr/bin/python3
   when: ansible_os_family == "Debian"
+  ignore_errors: yes
 
 - name: Upgrade pip
   pip:
@@ -78,7 +90,7 @@
   become: yes
   become_user: "{{ datasience_user }}"
 
-- name: Install additional system dependencies for data science
+- name: Install additional system dependencies for data science (Debian/Ubuntu)
   apt:
     name:
       - libhdf5-dev
@@ -91,3 +103,17 @@
       - graphviz
     state: present
   when: ansible_os_family == "Debian"
+
+- name: Install additional system dependencies for data science (RHEL/CentOS)
+  yum:
+    name:
+      - hdf5-devel
+      - openblas-devel
+      - lapack-devel
+      - gcc-gfortran
+      - freetype-devel
+      - libpng-devel
+      - pkgconfig
+      - graphviz
+    state: present
+  when: ansible_os_family == "RedHat"

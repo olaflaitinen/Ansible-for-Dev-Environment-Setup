@@ -1,0 +1,45 @@
+# JupyterHub configuration file
+
+# Networking
+c.JupyterHub.bind_url = 'http://0.0.0.0:{{ jupyterhub_port | default(8000) }}'
+c.JupyterHub.hub_ip = '0.0.0.0'
+c.JupyterHub.hub_port = {{ jupyterhub_hub_port | default(8081) }}
+
+# Spawner configuration
+c.JupyterHub.spawner_class = 'jupyterhub.spawner.LocalProcessSpawner'
+c.Spawner.default_url = '/lab'
+c.Spawner.notebook_dir = '~'
+
+# Authentication
+c.JupyterHub.authenticator_class = 'jupyterhub.auth.PAMAuthenticator'
+c.PAMAuthenticator.open_sessions = False
+
+# Admin users
+c.Authenticator.admin_users = {{ jupyterhub_admin_users | default(['admin']) | to_json }}
+
+# Logging
+c.JupyterHub.log_level = 'INFO'
+c.JupyterHub.log_file = '/var/log/jupyterhub/jupyterhub.log'
+
+# Database
+c.JupyterHub.db_url = 'sqlite:////srv/jupyterhub/jupyterhub.sqlite'
+
+# Cookie secret
+c.JupyterHub.cookie_secret_file = '/srv/jupyterhub/cookie_secret'
+
+# Services
+c.JupyterHub.services = []
+
+# Idle culler (optional)
+c.JupyterHub.load_roles = [
+    {
+        "name": "jupyterhub-idle-culler-role",
+        "scopes": [
+            "list:users",
+            "read:users:activity",
+            "read:servers",
+            "delete:servers",
+        ],
+        "services": ["jupyterhub-idle-culler-service"],
+    }
+]
